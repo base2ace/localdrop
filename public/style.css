@@ -599,18 +599,26 @@ body {
   letter-spacing: 1.5px;
 }
 
-/* Grid Layout */
+/* Layout System */
 .app-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  display: flex;
+  flex-direction: column;
   gap: 24px;
   flex: 1;
 }
 
-.grid-col {
+.top-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  width: 100%;
+}
+
+.bottom-row {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  width: 100%;
 }
 
 /* --- LEFT COLUMN: DRAG AND DROP ZONE --- */
@@ -1492,7 +1500,7 @@ body {
 
 /* --- MOBILE COMPATIBILITY MEDIA QUERIES --- */
 @media (max-width: 900px) {
-  .app-grid {
+  .top-row {
     grid-template-columns: 1fr;
     gap: 16px;
   }

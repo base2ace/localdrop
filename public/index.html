@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=1.0.6">
+  <link rel="stylesheet" href="style.css?v=1.0.7">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <!-- Lucide Icons via CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -97,8 +97,8 @@
     </div>
 
     <main class="app-grid">
-      <!-- LEFT COLUMN: UPLOADER & ACTIVE TRANSFERS -->
-      <section class="grid-col left-col">
+      <!-- TOP SECTION: Drag & Drop + Local Chat (Two equal-width columns) -->
+      <div class="top-row">
         <!-- DRAG AND DROP ZONE -->
         <div class="glass-card upload-card" id="drop-zone">
           <div class="upload-graphics">
@@ -122,21 +122,6 @@
           </div>
         </div>
 
-        <!-- ACTIVE TRANSFERS QUEUE -->
-        <div class="glass-card transfer-card hidden" id="transfer-card">
-          <div class="card-header">
-            <h3>Active Transfers</h3>
-            <span class="badge" id="transfer-count">0</span>
-          </div>
-          <div class="transfer-list" id="transfer-queue">
-            <!-- Dynamic Active Transfers go here -->
-          </div>
-        </div>
-
-      </section>
-
-      <!-- RIGHT COLUMN: FILE MANAGER & LOCAL CHAT -->
-      <section class="grid-col right-col">
         <!-- LOCAL CHAT -->
         <div class="glass-card chat-card">
           <div class="card-header">
@@ -164,6 +149,20 @@
             </button>
           </form>
         </div>
+      </div>
+
+      <!-- BOTTOM SECTION: Active Transfers & Shared Files (Full width) -->
+      <div class="bottom-row">
+        <!-- ACTIVE TRANSFERS QUEUE -->
+        <div class="glass-card transfer-card hidden" id="transfer-card">
+          <div class="card-header">
+            <h3>Active Transfers</h3>
+            <span class="badge" id="transfer-count">0</span>
+          </div>
+          <div class="transfer-list" id="transfer-queue">
+            <!-- Dynamic Active Transfers go here -->
+          </div>
+        </div>
 
         <!-- SHARED FILES LIST -->
         <div class="glass-card files-card">
@@ -189,13 +188,13 @@
             </div>
           </div>
         </div>
-      </section>
+      </div>
     </main>
     <footer class="branding-footer app-footer">
       <span>Developed by <a href="https://base2ace.com" target="_blank" rel="noopener noreferrer">Base2ace Technologies</a></span>
     </footer>
   </div>
 
-  <script src="app.js?v=1.0.6"></script>
+  <script src="app.js?v=1.0.7"></script>
 </body>
 </html>
