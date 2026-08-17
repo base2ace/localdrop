@@ -460,7 +460,7 @@ wss.on('connection', (ws, req) => {
   };
 
   // Assign client name
-  let clientName = 'Host';
+  let clientName = 'LocalDrop Server';
   if (!ws.isServer) {
     if (rememberedClients.has(ws.clientToken)) {
       clientName = rememberedClients.get(ws.clientToken).name;
@@ -497,7 +497,7 @@ wss.on('connection', (ws, req) => {
       if (parsed.type === 'chat') {
         let deviceOS = 'Device';
         if (ws.isServer) {
-          deviceOS = 'Host';
+          deviceOS = 'Server';
         } else {
           const ua = (ws.deviceInfo?.userAgent || '').toLowerCase();
           if (ua.includes('android')) deviceOS = 'Android';
@@ -510,7 +510,7 @@ wss.on('connection', (ws, req) => {
 
         const chatMsg = {
           text: parsed.text,
-          sender: parsed.sender || 'Unknown Device',
+          sender: ws.isServer ? 'LocalDrop Server' : parsed.sender || 'Unknown Device',
           timestamp: parsed.timestamp || new Date().toISOString(),
           isServer: !!ws.isServer,
           deviceOS: deviceOS,
@@ -522,6 +522,33 @@ wss.on('connection', (ws, req) => {
         }
         // Broadcast to all clients
         broadcast({ type: 'chat', data: chatMsg });
+      }
+
+      if (parsed.type === 'private_chat') {
+        const targetToken = parsed.recipientToken;
+        const targetWs = Array.from(clients).find(c => c.clientToken === targetToken);
+        
+        if (targetWs) {
+          const chatMsg = {
+            text: parsed.text,
+            sender: ws.isServer ? 'LocalDrop Server' : ws.clientName,
+            timestamp: new Date().toISOString(),
+            isServer: !!ws.isServer,
+            isPrivate: true,
+            recipientName: targetWs.clientName,
+            ip: ws.isServer ? '127.0.0.1' : (ws.deviceInfo?.ip || 'Unknown IP'),
+            deviceOS: ws.isServer ? 'Server' : 'Device'
+          };
+          
+          // Send to target recipient client
+          if (targetWs.readyState === WebSocket.OPEN) {
+            targetWs.send(JSON.stringify({ type: 'chat', data: chatMsg }));
+          }
+          // Send back to the sender (Host/Server)
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'chat', data: chatMsg }));
+          }
+        }
       }
     } catch (err) {
       console.error('Error handling WebSocket message:', err);
@@ -552,7 +579,8 @@ function broadcastConnectionsCount() {
       userAgent: client.deviceInfo?.userAgent || 'Unknown User Agent',
       connectedAt: client.deviceInfo?.connectedAt || new Date().toISOString(),
       name: client.clientName || 'Unknown Device',
-      isServer: !!client.isServer
+      isServer: !!client.isServer,
+      token: client.clientToken // Include token for private message addressing
     };
   });
 

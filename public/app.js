@@ -4,6 +4,8 @@ let ws = null;
 let reconnectInterval = 3000;
 let isServer = false;
 let lastConnectionCount = 0;
+let privateRecipientToken = '';
+let privateRecipientName = '';
 let connectedDevices = [];
 let clientName = '';
 const activeDownloads = new Map();
@@ -208,15 +210,40 @@ function setupEventListeners() {
       if (!text) return;
 
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'chat',
-          text,
-          sender: isServer ? 'Host' : clientName,
-          timestamp: new Date().toISOString()
-        }));
+        if (privateRecipientToken) {
+          ws.send(JSON.stringify({
+            type: 'private_chat',
+            recipientToken: privateRecipientToken,
+            text
+          }));
+        } else {
+          ws.send(JSON.stringify({
+            type: 'chat',
+            text,
+            sender: isServer ? 'LocalDrop Server' : clientName,
+            timestamp: new Date().toISOString()
+          }));
+        }
         chatInput.value = '';
       } else {
         showToast('Cannot send message. Offline.', 'error');
+      }
+    });
+  }
+
+  // Cancel PM click
+  const cancelPmBtn = document.getElementById('cancel-pm-btn');
+  if (cancelPmBtn) {
+    cancelPmBtn.addEventListener('click', () => {
+      privateRecipientToken = '';
+      privateRecipientName = '';
+      
+      const pmBar = document.getElementById('pm-recipient-bar');
+      if (pmBar) pmBar.classList.add('hidden');
+      
+      if (chatInput) {
+        chatInput.placeholder = 'Type a message...';
+        chatInput.focus();
       }
     });
   }
@@ -705,8 +732,12 @@ function renderDevicesModalContent() {
     row.className = 'device-row';
     
     const timeConnected = formatTimeAgo(new Date(device.connectedAt));
-    const badgeText = device.isServer ? 'Host' : 'Client';
+    const badgeText = device.isServer ? 'Server' : 'Client';
     const badgeClass = device.isServer ? 'device-badge host' : 'device-badge client';
+
+    const pmBtnHtml = (!device.isServer) 
+      ? `<button class="btn btn-sm btn-primary pm-btn" data-token="${device.token}" data-name="${device.name}" style="padding: 4px 8px; font-size: 0.72rem; margin-right: 8px; height: auto;">PM</button>` 
+      : '';
 
     row.innerHTML = `
       <div class="device-info-left">
@@ -718,12 +749,40 @@ function renderDevicesModalContent() {
           <span class="device-ip">${parsed.fullName} • ${device.ip}</span>
         </div>
       </div>
-      <div class="device-info-right">
+      <div class="device-info-right" style="display: flex; align-items: center;">
+        ${pmBtnHtml}
         <span class="${badgeClass}">${badgeText}</span>
         <span class="device-time" title="Connected at ${new Date(device.connectedAt).toLocaleTimeString()}">${timeConnected}</span>
       </div>
     `;
     listContainer.appendChild(row);
+  });
+
+  // Bind PM button click handlers
+  listContainer.querySelectorAll('.pm-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const targetToken = btn.getAttribute('data-token');
+      const targetName = btn.getAttribute('data-name');
+      
+      privateRecipientToken = targetToken;
+      privateRecipientName = targetName;
+      
+      const pmBar = document.getElementById('pm-recipient-bar');
+      const pmName = document.getElementById('pm-recipient-name');
+      if (pmBar && pmName) {
+        pmName.innerText = formatClientName(targetName);
+        pmBar.classList.remove('hidden');
+      }
+      
+      const chatInput = document.getElementById('chat-input');
+      if (chatInput) {
+        chatInput.placeholder = `Private message to ${formatClientName(targetName)}...`;
+        chatInput.focus();
+      }
+      
+      closeDevicesModal();
+    });
   });
 
   lucide.createIcons();
@@ -1263,21 +1322,24 @@ function appendChatMessage(msg) {
 
   const msgContainer = document.createElement('div');
   
-  const myName = isServer ? 'Host' : clientName;
+  const myName = isServer ? 'LocalDrop Server' : clientName;
   const isMe = msg.sender === myName;
   
-  msgContainer.className = `chat-bubble-container ${isMe ? 'me' : 'others'}`;
+  const isPrivateClass = msg.isPrivate ? 'private' : '';
+  msgContainer.className = `chat-bubble-container ${isMe ? 'me' : 'others'} ${isPrivateClass}`;
   
   const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
   let senderHtml = '';
   if (msg.isServer) {
-    senderHtml = `<span class="sender-name host" style="color: #818cf8; font-weight: 700;">Host</span>`;
+    const pmText = msg.isPrivate ? ` (Private to ${formatClientName(msg.recipientName)})` : '';
+    senderHtml = `<span class="sender-name host" style="color: #818cf8; font-weight: 700;">LocalDrop Server${pmText}</span>`;
   } else {
     const formattedOS = msg.deviceOS || 'Device';
     const formattedIP = msg.ip || 'Unknown IP';
     const formattedName = formatClientName(msg.sender);
-    senderHtml = `<span class="sender-name client" style="color: #22d3ee; font-weight: 700;">${formattedName} (${formattedOS} - ${formattedIP})</span>`;
+    const pmText = msg.isPrivate ? ' (Private to Server)' : '';
+    senderHtml = `<span class="sender-name client" style="color: #22d3ee; font-weight: 700;">${formattedName} (${formattedOS} - ${formattedIP})${pmText}</span>`;
   }
 
   msgContainer.innerHTML = `

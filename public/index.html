@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=1.0.5">
+  <link rel="stylesheet" href="style.css?v=1.0.6">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <!-- Lucide Icons via CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -151,6 +151,12 @@
               <p>No messages yet. Say hello!</p>
             </div>
           </div>
+          <div id="pm-recipient-bar" class="pm-recipient-bar hidden">
+            <span>Sending private message to <strong id="pm-recipient-name">...</strong></span>
+            <button type="button" id="cancel-pm-btn" class="cancel-pm-btn" title="Cancel Private Message">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
           <form id="chat-form" class="chat-input-area">
             <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" required>
             <button type="submit" id="chat-send-btn" class="icon-btn" title="Send message">
@@ -190,6 +196,6 @@
     </footer>
   </div>
 
-  <script src="app.js?v=1.0.5"></script>
+  <script src="app.js?v=1.0.6"></script>
 </body>
 </html>
