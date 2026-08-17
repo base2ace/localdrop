@@ -388,7 +388,7 @@ async function fetchServerInfo() {
               // Share on WhatsApp click
               pill.querySelector('.share-wa-pill-btn').addEventListener('click', (event) => {
                 event.stopPropagation(); // Avoid copy event trigger
-                const shareText = `Connect to LocalDrop to transfer files:\n🔗 Link: ${addr}\n🔐 PIN: ${info.pin}`;
+                const shareText = `Connect to LocalDrop to transfer files:\n\n${addr}/\n\n🔐 PIN: ${info.pin}`;
                 const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
                 window.open(waUrl, '_blank');
               });
@@ -419,7 +419,7 @@ async function fetchServerInfo() {
             });
             pill.querySelector('.share-wa-pill-btn').addEventListener('click', (event) => {
               event.stopPropagation();
-              const shareText = `Connect to LocalDrop to transfer files:\n🔗 Link: ${fallbackLink}\n🔐 PIN: ${info.pin}`;
+              const shareText = `Connect to LocalDrop to transfer files:\n\n${fallbackLink}/\n\n🔐 PIN: ${info.pin}`;
               const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
               window.open(waUrl, '_blank');
             });
