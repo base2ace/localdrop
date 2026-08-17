@@ -210,6 +210,10 @@ app.post('/api/upload/chunk', authenticate, async (req, res) => {
       broadcastActivity({ type: 'upload_started', file: safeRelativePath });
     }
 
+    const chunkFilePath = path.join(fileTempDir, `chunk_${chunkIndex}`);
+    const writeStream = fs.createWriteStream(chunkFilePath);
+    req.pipe(writeStream);
+
     writeStream.on('error', (err) => {
       console.error('Error writing chunk file:', err);
       console.log(`[ACTIVITY] Upload failed: "${safeRelativePath}"`);
