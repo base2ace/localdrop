@@ -1500,13 +1500,14 @@ body {
 
 @media (max-width: 768px) {
   body {
-    padding: 12px;
+    padding: 10px;
   }
   
   .app-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 16px;
+    gap: 12px;
+    padding: 12px 16px;
   }
   
   .header-left {
@@ -1519,26 +1520,32 @@ body {
   .header-right {
     width: 100%;
     justify-content: space-between;
+    gap: 8px;
   }
   
   .server-ip-info {
     flex: 1;
     justify-content: center;
-    font-size: 0.8rem;
-    padding: 6px 12px;
+    font-size: 0.78rem;
+    padding: 6px 10px;
   }
 }
 
 @media (max-width: 600px) {
+  .glass-card {
+    padding: 16px !important;
+    border-radius: 16px;
+  }
+
   .auth-card {
-    padding: 24px 16px;
+    padding: 24px 16px !important;
   }
   
   .share-banner {
     flex-direction: column;
     align-items: stretch;
     gap: 16px;
-    padding: 14px 16px;
+    padding: 12px 14px !important;
   }
   
   .share-banner-left {
@@ -1556,18 +1563,19 @@ body {
   }
   
   .upload-card {
-    padding: 24px 12px;
-    min-height: 220px;
+    padding: 20px 10px !important;
+    min-height: 200px;
   }
   
   .upload-buttons {
     flex-direction: column;
     width: 100%;
-    gap: 10px;
+    gap: 8px;
   }
   
   .upload-buttons label.btn {
     width: 100%;
     justify-content: center;
+    padding: 10px 14px;
   }
 }
