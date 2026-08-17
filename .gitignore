@@ -1,0 +1,10 @@
+node_modules/
+dist/
+localdrop.exe
+localdrop_brand.exe
+localdrop_final_transparent.exe
+uploads/
+uploads_temp/
+remembered_clients.json
+*.log
+.DS_Store

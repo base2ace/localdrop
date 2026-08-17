@@ -1,0 +1,48 @@
+name: Release and Code Sign
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger build on version tags (e.g. v1.0.0)
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build JS and Package base binary
+        run: |
+          npx esbuild server.js --bundle --platform=node --format=cjs --outfile=dist/server.cjs
+          npx pkg dist/server.cjs -c package.json --targets node18-win-x64 --output localdrop.exe
+
+      # SignPath Integration Step
+      # Ref: https://github.com/signpath/github-action
+      - name: SignPath Code Signing
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: 'localdrop'
+          signing-policy-slug: 'release-signing'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # The file to sign
+          input-artifact-path: 'localdrop.exe'
+          output-artifact-path: 'localdrop-signed.exe'
+
+      - name: Upload Signed Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: localdrop-signed
+          path: localdrop-signed.exe

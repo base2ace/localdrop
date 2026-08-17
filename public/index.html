@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalDrop - Secure Network Transfer</title>
+  <!-- Google Fonts: Outfit (headings) and Inter (body text) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!-- Lucide Icons via CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div class="mesh-bg"></div>
+
+  <!-- AUTHENTICATION SCREEN -->
+  <div id="auth-screen" class="screen active">
+    <div class="glass-card auth-card">
+      <div class="logo-area">
+        <div class="logo-icon-img">
+          <img src="logo.png" alt="LocalDrop Logo" class="auth-logo-img">
+        </div>
+        <h1>LocalDrop</h1>
+        <p>Secure Local Network Transfer</p>
+      </div>
+      <form id="auth-form" class="auth-form">
+        <label for="pin-input">Enter Access PIN</label>
+        <p class="auth-sub">Enter the 6-digit PIN shown on the server console to connect</p>
+        <div class="pin-container">
+          <input type="text" id="pin-input" maxlength="6" autofocus placeholder="••••••" autocomplete="off">
+        </div>
+        <div class="remember-container">
+          <label class="checkbox-label">
+            <input type="checkbox" id="remember-me-checkbox">
+            <span class="custom-checkbox"></span>
+            <span>Remember this device</span>
+          </label>
+        </div>
+        <button type="submit" id="auth-btn">
+          <span>Connect Session</span>
+          <i data-lucide="arrow-right"></i>
+        </button>
+        <p id="auth-error" class="error-msg hidden">Invalid PIN. Please try again.</p>
+      </form>
+    </div>
+    <footer class="branding-footer">
+      <span>Developed by <a href="https://base2ace.com" target="_blank" rel="noopener noreferrer">Base2ace Technologies</a></span>
+    </footer>
+  </div>
+
+  <!-- MAIN APPLICATION SCREEN -->
+  <div id="app-screen" class="screen">
+    <header class="app-header">
+      <div class="header-left">
+        <div class="app-logo">
+          <img src="logo.png" alt="LocalDrop Logo" class="header-logo-img">
+          <h1>LocalDrop</h1>
+        </div>
+        <span class="connection-pill">
+          <span class="pulse-dot"></span>
+          <span id="connection-status">Connecting...</span>
+        </span>
+      </div>
+      <div class="header-right">
+        <div class="server-ip-info" id="ip-info-box" title="Click to copy sharing URL">
+          <i data-lucide="link"></i>
+          <span id="server-address">Loading...</span>
+        </div>
+        <button id="logout-btn" class="icon-btn" title="Disconnect Session">
+          <i data-lucide="log-out"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- SHARING INFORMATION BANNER -->
+    <div class="glass-card share-banner" id="share-banner" style="display: none;">
+      <div class="share-banner-left">
+        <div class="share-icon-wrapper">
+          <i data-lucide="smartphone"></i>
+        </div>
+        <div class="share-text-area">
+          <span class="share-title">Connect other devices on your local network</span>
+          <span class="share-links-list" id="share-links-container">
+            Loading network addresses...
+          </span>
+        </div>
+      </div>
+      <div class="share-banner-right">
+        <div class="share-pin-badge">
+          <span>ACCESS PIN</span>
+          <strong id="share-pin-text">------</strong>
+        </div>
+      </div>
+    </div>
+
+    <main class="app-grid">
+      <!-- LEFT COLUMN: UPLOADER & ACTIVE TRANSFERS -->
+      <section class="grid-col left-col">
+        <!-- DRAG AND DROP ZONE -->
+        <div class="glass-card upload-card" id="drop-zone">
+          <div class="upload-graphics">
+            <div class="glow-circle"></div>
+            <i data-lucide="upload-cloud" class="upload-icon"></i>
+          </div>
+          <h2>Drag & Drop Here</h2>
+          <p>Files, multiple files, or entire folders</p>
+          
+          <div class="upload-buttons">
+            <label class="btn btn-primary">
+              <i data-lucide="file-plus"></i>
+              <span>Select Files</span>
+              <input type="file" id="file-input" multiple class="hidden-input">
+            </label>
+            <label class="btn btn-secondary">
+              <i data-lucide="folder-plus"></i>
+              <span>Select Folder</span>
+              <input type="file" id="folder-input" webkitdirectory directory multiple class="hidden-input">
+            </label>
+          </div>
+        </div>
+
+        <!-- ACTIVE TRANSFERS QUEUE -->
+        <div class="glass-card transfer-card hidden" id="transfer-card">
+          <div class="card-header">
+            <h3>Active Transfers</h3>
+            <span class="badge" id="transfer-count">0</span>
+          </div>
+          <div class="transfer-list" id="transfer-queue">
+            <!-- Dynamic Active Transfers go here -->
+          </div>
+        </div>
+
+      </section>
+
+      <!-- RIGHT COLUMN: FILE MANAGER & LOCAL CHAT -->
+      <section class="grid-col right-col">
+        <!-- LOCAL CHAT -->
+        <div class="glass-card chat-card">
+          <div class="card-header">
+            <div class="header-title">
+              <i data-lucide="message-square" class="accent-color"></i>
+              <h3>Local Chat</h3>
+            </div>
+            <span class="subtitle">Chat instantly with other connected devices</span>
+          </div>
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-empty-state" id="chat-empty">
+              <p>No messages yet. Say hello!</p>
+            </div>
+          </div>
+          <form id="chat-form" class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" required>
+            <button type="submit" id="chat-send-btn" class="icon-btn" title="Send message">
+              <i data-lucide="send"></i>
+            </button>
+          </form>
+        </div>
+
+        <!-- SHARED FILES LIST -->
+        <div class="glass-card files-card">
+          <div class="card-header">
+            <div class="header-title">
+              <i data-lucide="folder-open" class="accent-color"></i>
+              <h3>Shared Files</h3>
+            </div>
+            <button id="refresh-btn" class="icon-btn" title="Refresh files list">
+              <i data-lucide="rotate-cw"></i>
+            </button>
+          </div>
+          
+          <div class="files-container">
+            <div id="empty-state" class="empty-state">
+              <i data-lucide="inbox"></i>
+              <p>No files shared yet</p>
+              <span>Drag files here or select from options to share them on the local network.</span>
+            </div>
+            
+            <div id="files-list" class="files-list hidden">
+              <!-- Dynamic Shared Files go here -->
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="branding-footer app-footer">
+      <span>Developed by <a href="https://base2ace.com" target="_blank" rel="noopener noreferrer">Base2ace Technologies</a></span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

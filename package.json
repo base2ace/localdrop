@@ -1,0 +1,27 @@
+{
+  "name": "local-network-transfer",
+  "version": "1.0.0",
+  "description": "Secure, trace-free, and efficient local network file and folder transfer application",
+  "main": "server.js",
+  "bin": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "build:exe": "npx esbuild server.js --bundle --platform=node --format=cjs --outfile=dist/server.cjs && npx pkg dist/server.cjs -c package.json --targets node18-win-x64 --output localdrop.exe"
+  },
+  "dependencies": {
+    "archiver": "^6.0.1",
+    "express": "^4.19.2",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "pkg": "^5.8.1",
+    "resedit": "^3.0.2"
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*"
+    ]
+  }
+}
