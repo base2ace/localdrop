@@ -1489,3 +1489,85 @@ body {
   width: auto;
   max-width: fit-content;
 }
+
+/* --- MOBILE COMPATIBILITY MEDIA QUERIES --- */
+@media (max-width: 900px) {
+  .app-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 12px;
+  }
+  
+  .app-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  
+  .header-left {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+  
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .server-ip-info {
+    flex: 1;
+    justify-content: center;
+    font-size: 0.8rem;
+    padding: 6px 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .auth-card {
+    padding: 24px 16px;
+  }
+  
+  .share-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    padding: 14px 16px;
+  }
+  
+  .share-banner-left {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .share-banner-right {
+    margin-left: 0;
+    justify-content: center;
+  }
+  
+  .share-links-list {
+    justify-content: center;
+  }
+  
+  .upload-card {
+    padding: 24px 12px;
+    min-height: 220px;
+  }
+  
+  .upload-buttons {
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+  }
+  
+  .upload-buttons label.btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
