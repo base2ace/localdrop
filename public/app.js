@@ -1270,21 +1270,19 @@ function appendChatMessage(msg) {
   
   const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
-  let badgeText = 'Client';
-  if (!msg.isServer) {
-    badgeText = msg.deviceOS ? `Client (${msg.deviceOS})` : 'Client';
+  let senderHtml = '';
+  if (msg.isServer) {
+    senderHtml = `<span class="sender-name host" style="color: #818cf8; font-weight: 700;">Host</span>`;
   } else {
-    badgeText = 'Host';
+    const formattedOS = msg.deviceOS || 'Device';
+    const formattedIP = msg.ip || 'Unknown IP';
+    const formattedName = formatClientName(msg.sender);
+    senderHtml = `<span class="sender-name client" style="color: #22d3ee; font-weight: 700;">${formattedName} (${formattedOS} - ${formattedIP})</span>`;
   }
-  
-  const roleBadge = msg.isServer 
-    ? '<span class="sender-role-badge host">Host</span>' 
-    : `<span class="sender-role-badge client">${badgeText}</span>`;
 
   msgContainer.innerHTML = `
     <div class="chat-bubble-meta">
-      <span class="sender-name">${formatClientName(msg.sender)}</span>
-      ${roleBadge}
+      ${senderHtml}
       ${timeStr ? `<span class="sender-time">${timeStr}</span>` : ''}
     </div>
     <div class="chat-bubble">

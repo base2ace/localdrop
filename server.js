@@ -513,7 +513,8 @@ wss.on('connection', (ws, req) => {
           sender: parsed.sender || 'Unknown Device',
           timestamp: parsed.timestamp || new Date().toISOString(),
           isServer: !!ws.isServer,
-          deviceOS: deviceOS
+          deviceOS: deviceOS,
+          ip: ws.isServer ? '127.0.0.1' : (ws.deviceInfo?.ip || 'Unknown IP')
         };
         chatHistory.push(chatMsg);
         if (chatHistory.length > MAX_CHAT_HISTORY) {
