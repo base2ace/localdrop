@@ -495,11 +495,25 @@ wss.on('connection', (ws, req) => {
     try {
       const parsed = JSON.parse(message);
       if (parsed.type === 'chat') {
+        let deviceOS = 'Device';
+        if (ws.isServer) {
+          deviceOS = 'Host';
+        } else {
+          const ua = (ws.deviceInfo?.userAgent || '').toLowerCase();
+          if (ua.includes('android')) deviceOS = 'Android';
+          else if (ua.includes('iphone')) deviceOS = 'iPhone';
+          else if (ua.includes('ipad')) deviceOS = 'iPad';
+          else if (ua.includes('macintosh') || ua.includes('mac os')) deviceOS = 'Mac';
+          else if (ua.includes('windows')) deviceOS = 'Windows';
+          else if (ua.includes('linux')) deviceOS = 'Linux';
+        }
+
         const chatMsg = {
           text: parsed.text,
           sender: parsed.sender || 'Unknown Device',
           timestamp: parsed.timestamp || new Date().toISOString(),
-          isServer: !!ws.isServer
+          isServer: !!ws.isServer,
+          deviceOS: deviceOS
         };
         chatHistory.push(chatMsg);
         if (chatHistory.length > MAX_CHAT_HISTORY) {

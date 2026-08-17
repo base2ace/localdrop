@@ -714,7 +714,7 @@ function renderDevicesModalContent() {
           <i data-lucide="${parsed.deviceType}"></i>
         </div>
         <div class="device-text-details">
-          <span class="device-name" style="font-weight: 700;">${device.name || parsed.fullName}</span>
+          <span class="device-name" style="font-weight: 700;">${formatClientName(device.name) || parsed.fullName}</span>
           <span class="device-ip">${parsed.fullName} • ${device.ip}</span>
         </div>
       </div>
@@ -1096,6 +1096,14 @@ function formatTimeAgo(date) {
   return 'just now';
 }
 
+function formatClientName(name) {
+  if (!name) return 'Host';
+  if (name.toLowerCase() === 'host') return 'Host';
+  return name.split('_')
+             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+             .join(' ');
+}
+
 // Custom Toast Toast Notification Popup
 function showToast(message, type = 'info') {
   // Remove existing toast if present
@@ -1261,11 +1269,21 @@ function appendChatMessage(msg) {
   msgContainer.className = `chat-bubble-container ${isMe ? 'me' : 'others'}`;
   
   const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const roleBadge = msg.isServer ? '<span class="sender-role-badge host">Host</span>' : '<span class="sender-role-badge client">Client</span>';
+  
+  let badgeText = 'Client';
+  if (!msg.isServer) {
+    badgeText = msg.deviceOS ? `Client (${msg.deviceOS})` : 'Client';
+  } else {
+    badgeText = 'Host';
+  }
+  
+  const roleBadge = msg.isServer 
+    ? '<span class="sender-role-badge host">Host</span>' 
+    : `<span class="sender-role-badge client">${badgeText}</span>`;
 
   msgContainer.innerHTML = `
     <div class="chat-bubble-meta">
-      <span class="sender-name">${msg.sender}</span>
+      <span class="sender-name">${formatClientName(msg.sender)}</span>
       ${roleBadge}
       ${timeStr ? `<span class="sender-time">${timeStr}</span>` : ''}
     </div>
