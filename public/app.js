@@ -1205,10 +1205,129 @@ if (!document.getElementById('toast-keyframes')) {
 
 // --- STREAM DOWNLOADS & CHAT HELPERS ---
 
+async function downloadFolderCheckpoint(file) {
+  let dirHandle;
+  try {
+    dirHandle = await window.showDirectoryPicker({
+      mode: 'readwrite'
+    });
+  } catch (e) {
+    console.log('User cancelled directory picker:', e);
+    showToast('Download cancelled by user', 'info');
+    return;
+  }
+
+  const fileId = generateUUID();
+  const folderName = file.name;
+
+  const downloadState = {
+    name: `Folder: ${folderName}`,
+    size: file.size || 0,
+    bytesDownloaded: 0,
+    startTime: Date.now(),
+    type: 'download',
+    cancelled: false
+  };
+
+  activeDownloads.set(fileId, downloadState);
+  transferCard.classList.remove('hidden');
+  renderTransferQueue();
+
+  try {
+    const manifestResponse = await fetch(`/api/folder-manifest?path=${encodeURIComponent(file.path)}&token=${token}`);
+    if (!manifestResponse.ok) throw new Error('Failed to retrieve folder manifest');
+    const manifest = await manifestResponse.json();
+
+    const totalFolderSize = manifest.reduce((acc, f) => acc + f.size, 0);
+    downloadState.size = totalFolderSize;
+    renderTransferQueue();
+
+    let bytesCompletedBeforeCurrent = 0;
+
+    for (const f of manifest) {
+      if (downloadState.cancelled) {
+        break;
+      }
+
+      const pathParts = f.path.split('/');
+      let currentHandle = dirHandle;
+      
+      for (let i = 0; i < pathParts.length - 1; i++) {
+        currentHandle = await currentHandle.getDirectoryHandle(pathParts[i], { create: true });
+      }
+
+      const filename = pathParts[pathParts.length - 1];
+      let skipFile = false;
+      try {
+        const existingFileHandle = await currentHandle.getFileHandle(filename);
+        const existingFile = await existingFileHandle.getFile();
+        if (existingFile.size === f.size) {
+          skipFile = true;
+          bytesCompletedBeforeCurrent += f.size;
+          downloadState.bytesDownloaded = bytesCompletedBeforeCurrent;
+          updateDownloadProgressUI(fileId);
+          console.log(`Skipping file (already exists with correct size): ${f.path}`);
+        }
+      } catch (e) {
+        // File does not exist, download it
+      }
+
+      if (skipFile) continue;
+
+      const fileUrl = `/api/download?path=${encodeURIComponent(f.path)}&token=${token}`;
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error(`Failed to download file: ${f.path}`);
+
+      const reader = response.body.getReader();
+      const fileHandle = await currentHandle.getFileHandle(filename, { create: true });
+      const writable = await fileHandle.createWritable();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        await writable.write(value);
+        bytesCompletedBeforeCurrent += value.length;
+        downloadState.bytesDownloaded = bytesCompletedBeforeCurrent;
+        updateDownloadProgressUI(fileId);
+      }
+      
+      await writable.close();
+    }
+
+    if (!downloadState.cancelled) {
+      showToast(`Successfully downloaded folder "${folderName}"`, 'success');
+    }
+  } catch (err) {
+    console.error('Folder download failed:', err);
+    showToast(`Failed to complete folder download: ${folderName}`, 'error');
+  } finally {
+    activeDownloads.delete(fileId);
+    renderTransferQueue();
+    if (activeUploads.size === 0 && activeDownloads.size === 0) {
+      setTimeout(() => {
+        if (activeUploads.size === 0 && activeDownloads.size === 0) {
+          transferCard.classList.add('hidden');
+          transferQueue.innerHTML = '';
+        }
+      }, 3000);
+    }
+  }
+}
+
 async function downloadFileWithProgress(file) {
+  const isFolder = file.type === 'directory';
+  if (isFolder) {
+    if (window.showDirectoryPicker) {
+      await downloadFolderCheckpoint(file);
+      return;
+    } else {
+      showToast('Directory Access API is not supported in this browser. Falling back to ZIP download.', 'info');
+    }
+  }
+
   const fileId = generateUUID();
   const filename = file.name;
-  const isFolder = file.type === 'directory';
   const displayFilename = isFolder ? `${filename}.zip` : filename;
 
   const downloadState = {

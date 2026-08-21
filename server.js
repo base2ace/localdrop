@@ -325,6 +325,35 @@ app.get('/api/download', authenticate, async (req, res) => {
   }
 });
 
+// Get recursive flat list of all files inside a directory
+app.get('/api/folder-manifest', authenticate, async (req, res) => {
+  const relPath = req.query.path;
+  if (!relPath) return res.status(400).json({ error: 'Path is required' });
+
+  const targetPath = path.resolve(path.join(UPLOADS_DIR, relPath));
+
+  // Security check: prevent directory traversal outside uploads
+  if (!targetPath.startsWith(UPLOADS_DIR)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  try {
+    if (fs.existsSync(targetPath)) {
+      const stat = await fsp.stat(targetPath);
+      if (!stat.isDirectory()) {
+        return res.status(400).json({ error: 'Target path is not a directory' });
+      }
+      const files = await scanDirectoryRecursive(targetPath);
+      res.json(files);
+    } else {
+      res.status(404).json({ error: 'Folder not found' });
+    }
+  } catch (err) {
+    console.error('Failed to generate folder manifest:', err);
+    res.status(500).json({ error: 'Failed to read directory structure' });
+  }
+});
+
 // Get server info (port, PIN, and local network IP addresses)
 app.get('/api/server-info', authenticate, async (req, res) => {
   const hostname = os.hostname();
@@ -405,6 +434,28 @@ async function scanDirectory(dir) {
     if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
+}
+
+// Helper: Scan directory recursively returning flat list of all files
+async function scanDirectoryRecursive(dir, baseDir = UPLOADS_DIR) {
+  let results = [];
+  const list = await fsp.readdir(dir, { withFileTypes: true });
+  for (const item of list) {
+    const fullPath = path.join(dir, item.name);
+    const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+    if (item.isDirectory()) {
+      const subResults = await scanDirectoryRecursive(fullPath, baseDir);
+      results = results.concat(subResults);
+    } else {
+      const stat = await fsp.stat(fullPath);
+      results.push({
+        name: item.name,
+        path: relPath,
+        size: stat.size
+      });
+    }
+  }
+  return results;
 }
 
 // Helper: Get folder size recursively
