@@ -303,6 +303,98 @@ function setupEventListeners() {
       fileInput.click();
     }
   });
+
+  // --- EMOJI PICKER INITIALIZATION ---
+  const EMOJIS = [
+    '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
+    '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
+    '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥸',
+    '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️',
+    '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '✊', '👊',
+    '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️', '💅', '🤳', '💪',
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
+    '🔥', '✨', '🎉', '🚀', '💡', '💯', '💻', '📱', '📁', '💬'
+  ];
+
+  const emojiBtn = document.getElementById('emoji-btn');
+  const emojiPicker = document.getElementById('emoji-picker');
+  if (emojiBtn && emojiPicker && chatInput) {
+    EMOJIS.forEach(emoji => {
+      const el = document.createElement('div');
+      el.className = 'emoji-item';
+      el.innerText = emoji;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const start = chatInput.selectionStart;
+        const end = chatInput.selectionEnd;
+        const text = chatInput.value;
+        chatInput.value = text.substring(0, start) + emoji + text.substring(end);
+        chatInput.focus();
+        const newCursorPos = start + emoji.length;
+        chatInput.setSelectionRange(newCursorPos, newCursorPos);
+        emojiPicker.classList.add('hidden');
+      });
+      emojiPicker.appendChild(el);
+    });
+
+    emojiBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      emojiPicker.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
+        emojiPicker.classList.add('hidden');
+      }
+    });
+  }
+
+  // Chat attachment controls
+  const chatAttachBtn = document.getElementById('chat-attach-btn');
+  const chatFileInput = document.getElementById('chat-file-input');
+  if (chatAttachBtn && chatFileInput) {
+    chatAttachBtn.addEventListener('click', () => {
+      chatFileInput.click();
+    });
+    chatFileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleChatAttachment(e.target.files[0]);
+      }
+      chatFileInput.value = '';
+    });
+  }
+}
+
+function handleChatAttachment(file) {
+  if (!file) return;
+  const fileId = generateUUID();
+  const customName = `chat_attachments/${file.name}`;
+  showToast(`Uploading chat attachment: ${file.name}...`, 'info');
+  uploadQueue.push({ fileId, file, customName });
+  transferCard.classList.remove('hidden');
+  processUploadQueue();
+}
+
+function sendChatAttachmentMessage(name, size, path) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const chatFile = { name, size, path };
+    if (privateRecipientToken) {
+      ws.send(JSON.stringify({
+        type: 'private_chat',
+        recipientToken: privateRecipientToken,
+        text: '',
+        chatFile
+      }));
+    } else {
+      ws.send(JSON.stringify({
+        type: 'chat',
+        text: '',
+        sender: isServer ? 'LocalDrop Server' : clientName,
+        timestamp: new Date().toISOString(),
+        chatFile
+      }));
+    }
+  }
 }
 
 function showAuthError(message) {
@@ -877,7 +969,7 @@ function handleUploads(files) {
 
   files.forEach((file) => {
     const fileId = generateUUID();
-    uploadQueue.push({ fileId, file });
+    uploadQueue.push({ fileId, file, customName: null });
   });
 
   transferCard.classList.remove('hidden');
@@ -902,20 +994,20 @@ async function processUploadQueue() {
     return;
   }
 
-  const { fileId, file } = uploadQueue.shift();
+  const { fileId, file, customName } = uploadQueue.shift();
   activeUploadCount++;
   
-  uploadFileInChunks(fileId, file).finally(() => {
+  uploadFileInChunks(fileId, file, customName).finally(() => {
     activeUploadCount--;
     processUploadQueue();
   });
 }
 
 // Perform chunked uploads
-async function uploadFileInChunks(fileId, file) {
+async function uploadFileInChunks(fileId, file, customName = null) {
   const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunk sizes
   const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
-  const filename = file.webkitRelativePath || file.name;
+  const filename = customName || file.webkitRelativePath || file.name;
 
   const uploadState = {
     name: filename,
@@ -989,6 +1081,10 @@ async function uploadFileInChunks(fileId, file) {
   activeUploads.delete(fileId);
   completedUploadBatchFiles++;
   renderTransferQueue();
+
+  if (customName && customName.startsWith('chat_attachments/')) {
+    sendChatAttachmentMessage(file.name, file.size, customName);
+  }
 }
 
 // Render transfers active items lists
@@ -1028,14 +1124,16 @@ function renderTransferQueue() {
     item.className = 'transfer-item';
     item.id = `transfer-${fileId}`;
 
-    const isFolder = state.name.includes('/');
+    const isChatAttach = state.name.startsWith('chat_attachments/');
+    const displayName = isChatAttach ? state.name.replace('chat_attachments/', '') : state.name;
+    const isFolder = state.name.includes('/') && !isChatAttach;
     const iconName = isFolder ? 'folder' : 'file-text';
 
     item.innerHTML = `
       <div class="transfer-info">
         <div class="transfer-name-area">
           <i data-lucide="${iconName}"></i>
-          <span class="transfer-name" title="${state.name}">${state.name}</span>
+          <span class="transfer-name" title="${state.name}">${displayName}</span>
         </div>
         <span class="transfer-speed" id="speed-${fileId}">0 KB/s</span>
       </div>
@@ -1205,6 +1303,34 @@ if (!document.getElementById('toast-keyframes')) {
 
 // --- STREAM DOWNLOADS & CHAT HELPERS ---
 
+function showCompletionModal(name, detailText, isFolder = false) {
+  let modal = document.getElementById('completion-modal');
+  if (modal) modal.remove();
+
+  modal = document.createElement('div');
+  modal.id = 'completion-modal';
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = `
+    <div class="glass-card modal-card" style="max-width: 400px; text-align: center; padding: 32px 24px;">
+      <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(16, 185, 129, 0.1); border: 2px solid var(--accent-success); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; color: var(--accent-success);">
+        <i data-lucide="check" style="width: 32px; height: 32px;"></i>
+      </div>
+      <h3 style="font-family: var(--font-title); font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; color: white;">Download Completed!</h3>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 24px; line-height: 1.5;">
+        Successfully saved <strong>${escapeHtml(name)}</strong>.<br>
+        <span style="color: var(--accent-secondary); font-weight: 500;">${escapeHtml(detailText)}</span>
+      </p>
+      <button class="btn btn-primary" id="close-completion-btn" style="width: 100%; justify-content: center;">Done</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  lucide.createIcons();
+
+  modal.querySelector('#close-completion-btn').addEventListener('click', () => {
+    modal.remove();
+  });
+}
+
 async function downloadFolderCheckpoint(file) {
   let dirHandle;
   try {
@@ -1258,10 +1384,12 @@ async function downloadFolderCheckpoint(file) {
 
       const filename = pathParts[pathParts.length - 1];
       let skipFile = false;
+      let localSize = 0;
       try {
         const existingFileHandle = await currentHandle.getFileHandle(filename);
         const existingFile = await existingFileHandle.getFile();
-        if (existingFile.size === f.size) {
+        localSize = existingFile.size;
+        if (localSize === f.size) {
           skipFile = true;
           bytesCompletedBeforeCurrent += f.size;
           downloadState.bytesDownloaded = bytesCompletedBeforeCurrent;
@@ -1269,18 +1397,37 @@ async function downloadFolderCheckpoint(file) {
           console.log(`Skipping file (already exists with correct size): ${f.path}`);
         }
       } catch (e) {
-        // File does not exist, download it
+        // File does not exist
       }
 
       if (skipFile) continue;
 
+      const headers = {};
+      let writeOffset = 0;
+      if (localSize > 0 && localSize < f.size) {
+        headers['Range'] = `bytes=${localSize}-`;
+        writeOffset = localSize;
+      }
+
       const fileUrl = `/api/download?path=${encodeURIComponent(f.path)}&token=${token}`;
-      const response = await fetch(fileUrl);
+      const response = await fetch(fileUrl, { headers });
       if (!response.ok) throw new Error(`Failed to download file: ${f.path}`);
+
+      const isPartial = response.status === 206;
+      if (!isPartial) {
+        writeOffset = 0;
+      }
 
       const reader = response.body.getReader();
       const fileHandle = await currentHandle.getFileHandle(filename, { create: true });
-      const writable = await fileHandle.createWritable();
+      const writable = await fileHandle.createWritable({ keepExistingData: true });
+
+      if (writeOffset > 0) {
+        await writable.seek(writeOffset);
+        bytesCompletedBeforeCurrent += writeOffset;
+        downloadState.bytesDownloaded = bytesCompletedBeforeCurrent;
+        updateDownloadProgressUI(fileId);
+      }
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1297,10 +1444,102 @@ async function downloadFolderCheckpoint(file) {
 
     if (!downloadState.cancelled) {
       showToast(`Successfully downloaded folder "${folderName}"`, 'success');
+      showCompletionModal(folderName, `Saved inside selected folder: "${dirHandle.name}"`, true);
     }
   } catch (err) {
     console.error('Folder download failed:', err);
     showToast(`Failed to complete folder download: ${folderName}`, 'error');
+  } finally {
+    activeDownloads.delete(fileId);
+    renderTransferQueue();
+    if (activeUploads.size === 0 && activeDownloads.size === 0) {
+      setTimeout(() => {
+        if (activeUploads.size === 0 && activeDownloads.size === 0) {
+          transferCard.classList.add('hidden');
+          transferQueue.innerHTML = '';
+        }
+      }, 3000);
+    }
+  }
+}
+
+async function downloadFileSavePicker(file) {
+  let fileHandle;
+  try {
+    fileHandle = await window.showSaveFilePicker({
+      suggestedName: file.name
+    });
+  } catch (e) {
+    console.log('User cancelled save file picker:', e);
+    showToast('Download cancelled by user', 'info');
+    return;
+  }
+
+  const fileId = generateUUID();
+  const filename = file.name;
+
+  const downloadState = {
+    name: filename,
+    size: file.size || 0,
+    bytesDownloaded: 0,
+    startTime: Date.now(),
+    type: 'download',
+    cancelled: false
+  };
+
+  activeDownloads.set(fileId, downloadState);
+  transferCard.classList.remove('hidden');
+  renderTransferQueue();
+
+  try {
+    const existingFile = await fileHandle.getFile();
+    const localSize = existingFile.size;
+    let writeOffset = 0;
+    const headers = {};
+
+    if (localSize > 0 && localSize < file.size) {
+      headers['Range'] = `bytes=${localSize}-`;
+      writeOffset = localSize;
+    }
+
+    const response = await fetch(`/api/download?path=${encodeURIComponent(file.path)}&token=${token}`, { headers });
+    if (!response.ok) throw new Error('Download request failed');
+
+    const isPartial = response.status === 206;
+    if (!isPartial) {
+      writeOffset = 0;
+    }
+
+    const reader = response.body.getReader();
+    const writable = await fileHandle.createWritable({ keepExistingData: true });
+
+    if (writeOffset > 0) {
+      await writable.seek(writeOffset);
+      downloadState.bytesDownloaded = writeOffset;
+      updateDownloadProgressUI(fileId);
+    }
+
+    while (true) {
+      if (downloadState.cancelled) {
+        break;
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      await writable.write(value);
+      downloadState.bytesDownloaded += value.length;
+      updateDownloadProgressUI(fileId);
+    }
+
+    await writable.close();
+    
+    if (!downloadState.cancelled) {
+      showToast(`Successfully saved "${fileHandle.name}"`, 'success');
+      showCompletionModal(fileHandle.name, `Saved to chosen location: "${fileHandle.name}"`);
+    }
+  } catch (err) {
+    console.error('Save picker download failed:', err);
+    showToast(`Failed to download: ${filename}`, 'error');
   } finally {
     activeDownloads.delete(fileId);
     renderTransferQueue();
@@ -1324,6 +1563,11 @@ async function downloadFileWithProgress(file) {
     } else {
       showToast('Directory Access API is not supported in this browser. Falling back to ZIP download.', 'info');
     }
+  }
+
+  if (window.showSaveFilePicker) {
+    await downloadFileSavePicker(file);
+    return;
   }
 
   const fileId = generateUUID();
@@ -1461,17 +1705,50 @@ function appendChatMessage(msg) {
     senderHtml = `<span class="sender-name client" style="color: #22d3ee; font-weight: 700;">${formattedName} (${formattedOS} - ${formattedIP})${pmText}</span>`;
   }
 
+  let chatContentHtml = escapeHtml(msg.text);
+  if (msg.chatFile) {
+    const fileIcon = 'file-text';
+    const captionHtml = msg.text ? `<div style="margin-bottom: 6px;">${escapeHtml(msg.text)}</div>` : '';
+    chatContentHtml = `
+      ${captionHtml}
+      <div class="chat-file-card" style="margin-top: 4px; display: flex; align-items: center; gap: 12px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--glass-border); padding: 8px 12px; border-radius: 10px; min-width: 220px; max-width: 320px;">
+        <div class="file-icon file" style="width: 36px; height: 36px; border-radius: 8px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.2); display: flex; align-items: center; justify-content: center; color: var(--accent-primary);">
+          <i data-lucide="${fileIcon}"></i>
+        </div>
+        <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; text-align: left;">
+          <span style="font-weight: 600; font-size: 0.8rem; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(msg.chatFile.name)}">${escapeHtml(msg.chatFile.name)}</span>
+          <span style="color: var(--text-muted); font-size: 0.7rem;">${formatBytes(msg.chatFile.size)}</span>
+        </div>
+        <button class="icon-btn chat-file-dl-btn" data-path="${escapeHtml(msg.chatFile.path)}" data-name="${escapeHtml(msg.chatFile.name)}" data-size="${msg.chatFile.size}" title="Download File" style="background: rgba(255, 255, 255, 0.04); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--glass-border);">
+          <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+    `;
+  }
+
   msgContainer.innerHTML = `
     <div class="chat-bubble-meta">
       ${senderHtml}
       ${timeStr ? `<span class="sender-time">${timeStr}</span>` : ''}
     </div>
     <div class="chat-bubble">
-      ${escapeHtml(msg.text)}
+      ${chatContentHtml}
     </div>
   `;
 
   chatMessages.appendChild(msgContainer);
+  lucide.createIcons();
+
+  const dlBtn = msgContainer.querySelector('.chat-file-dl-btn');
+  if (dlBtn) {
+    dlBtn.addEventListener('click', () => {
+      const path = dlBtn.getAttribute('data-path');
+      const name = dlBtn.getAttribute('data-name');
+      const size = parseInt(dlBtn.getAttribute('data-size'), 10);
+      downloadFileWithProgress({ name, path, size, type: 'file' });
+    });
+  }
+
   chatMessages.scrollTop = chatMessages.scrollHeight; // auto-scroll
 }
 

@@ -314,8 +314,13 @@ app.get('/api/download', authenticate, async (req, res) => {
       archive.directory(targetPath, folderName);
       await archive.finalize();
     } else {
-      // File: stream directly
-      res.download(targetPath, path.basename(targetPath));
+      // File: stream directly with range support via sendFile
+      res.sendFile(targetPath, { 
+        acceptRanges: true,
+        headers: {
+          'Content-Disposition': `attachment; filename="${encodeURIComponent(path.basename(targetPath))}"`
+        }
+      });
     }
   } catch (err) {
     console.error('Download processing failed:', err);
@@ -407,6 +412,7 @@ async function scanDirectory(dir) {
   const list = await fsp.readdir(dir, { withFileTypes: true });
   
   for (const item of list) {
+    if (item.name === 'chat_attachments') continue;
     const fullPath = path.join(dir, item.name);
     const relativePath = path.relative(UPLOADS_DIR, fullPath).replace(/\\/g, '/');
     const stat = await fsp.stat(fullPath);
@@ -565,7 +571,8 @@ wss.on('connection', (ws, req) => {
           timestamp: parsed.timestamp || new Date().toISOString(),
           isServer: !!ws.isServer,
           deviceOS: deviceOS,
-          ip: ws.isServer ? '127.0.0.1' : (ws.deviceInfo?.ip || 'Unknown IP')
+          ip: ws.isServer ? '127.0.0.1' : (ws.deviceInfo?.ip || 'Unknown IP'),
+          chatFile: parsed.chatFile
         };
         chatHistory.push(chatMsg);
         if (chatHistory.length > MAX_CHAT_HISTORY) {
@@ -588,7 +595,8 @@ wss.on('connection', (ws, req) => {
             isPrivate: true,
             recipientName: targetWs.clientName,
             ip: ws.isServer ? '127.0.0.1' : (ws.deviceInfo?.ip || 'Unknown IP'),
-            deviceOS: ws.isServer ? 'Server' : 'Device'
+            deviceOS: ws.isServer ? 'Server' : 'Device',
+            chatFile: parsed.chatFile
           };
           
           // Send to target recipient client

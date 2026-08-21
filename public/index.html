@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=1.0.8">
+  <link rel="stylesheet" href="style.css?v=1.1.2">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <!-- Lucide Icons via CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -142,8 +142,14 @@
               <i data-lucide="x"></i>
             </button>
           </div>
-          <form id="chat-form" class="chat-input-area">
-            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" required>
+          <form id="chat-form" class="chat-input-area" style="position: relative;">
+            <button type="button" id="emoji-btn" class="icon-btn emoji-btn" title="Insert Emoji">😀</button>
+            <div id="emoji-picker" class="emoji-picker hidden"></div>
+            <button type="button" id="chat-attach-btn" class="icon-btn" title="Attach File">
+              <i data-lucide="paperclip"></i>
+            </button>
+            <input type="file" id="chat-file-input" class="hidden-input">
+            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
             <button type="submit" id="chat-send-btn" class="icon-btn" title="Send message">
               <i data-lucide="send"></i>
             </button>
@@ -195,6 +201,6 @@
     </footer>
   </div>
 
-  <script src="app.js?v=1.0.8"></script>
+  <script src="app.js?v=1.1.2"></script>
 </body>
 </html>
