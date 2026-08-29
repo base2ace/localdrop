@@ -155,6 +155,30 @@
             </button>
           </form>
         </div>
+
+        <!-- SHARED CLIPBOARD -->
+        <div class="glass-card clipboard-card">
+          <div class="card-header">
+            <div class="header-title">
+              <i data-lucide="clipboard" class="accent-color-green" style="color: var(--accent-success);"></i>
+              <h3>Shared Clipboard</h3>
+            </div>
+            <span class="subtitle">Sync text snippets in real-time across all devices</span>
+          </div>
+          <div class="clipboard-body" style="display: flex; flex-direction: column; flex: 1; gap: 12px; padding: 12px 0 0;">
+            <textarea id="clipboard-text" placeholder="Copy here on secure context (HTTPS) or view synchronized text snippets..." style="flex: 1; min-height: 120px; background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 8px; color: white; padding: 12px; font-family: inherit; font-size: 0.85rem; resize: none; outline: none; transition: var(--transition-fast);" readonly></textarea>
+            <div class="clipboard-actions" style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" id="clipboard-copy-btn" style="flex: 1; justify-content: center; padding: 8px 12px;" title="Copy to local clipboard">
+                <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
+                <span>Copy Local</span>
+              </button>
+              <button class="btn btn-primary" id="clipboard-edit-btn" style="flex: 1; justify-content: center; padding: 8px 12px;" title="Edit and broadcast clipboard text">
+                <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i>
+                <span>Edit & Sync</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- BOTTOM SECTION: Active Transfers & Shared Files (Full width) -->
@@ -172,10 +196,16 @@
 
         <!-- SHARED FILES LIST -->
         <div class="glass-card files-card">
-          <div class="card-header">
-            <div class="header-title">
-              <i data-lucide="folder-open" class="accent-color"></i>
-              <h3>Shared Files</h3>
+          <div class="card-header" style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div class="header-title">
+                <i data-lucide="folder-open" class="accent-color"></i>
+                <h3>Shared Files</h3>
+              </div>
+              <label class="select-all-container hidden" id="select-all-label" style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-muted); cursor: pointer; user-select: none; margin-left: 10px;">
+                <input type="checkbox" id="select-all-checkbox" style="accent-color: var(--accent-primary); cursor: pointer; margin: 0;">
+                <span>Select All</span>
+              </label>
             </div>
             <button id="refresh-btn" class="icon-btn" title="Refresh files list">
               <i data-lucide="rotate-cw"></i>
@@ -199,6 +229,42 @@
     <footer class="branding-footer app-footer">
       <span>Developed by <a href="https://base2ace.com" target="_blank" rel="noopener noreferrer">Base2ace Technologies</a></span>
     </footer>
+  </div>
+
+  <!-- FLOATING BATCH ACTION BAR -->
+  <div id="batch-action-bar" class="batch-action-bar hidden">
+    <div class="batch-info">
+      <span id="batch-count">0 items selected</span>
+    </div>
+    <div class="batch-buttons">
+      <button id="batch-download-btn" class="btn btn-primary" title="Download selected items sequentially">
+        <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+        <span>Download</span>
+      </button>
+      <button id="batch-delete-btn" class="btn btn-danger" title="Delete selected items from server">
+        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+        <span>Delete</span>
+      </button>
+      <button id="batch-clear-btn" class="btn btn-secondary" title="Deselect all items">
+        <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        <span>Cancel</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MEDIA PREVIEW LIGHTBOX MODAL -->
+  <div id="lightbox-modal" class="modal-overlay">
+    <div class="lightbox-card glass-card">
+      <button class="lightbox-close" id="lightbox-close-btn" title="Close Preview">
+        <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+      </button>
+      <div class="lightbox-content" id="lightbox-content">
+        <!-- Media content injected dynamically -->
+      </div>
+      <div class="lightbox-caption" id="lightbox-caption">
+        <!-- Caption injected dynamically -->
+      </div>
+    </div>
   </div>
 
   <script src="app.js?v=1.1.2"></script>

@@ -1,5 +1,6 @@
 import express from 'express';
 import http from 'http';
+import https from 'https';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import fs from 'fs';
@@ -9,6 +10,8 @@ import os from 'os';
 import archiver from 'archiver';
 import { fileURLToPath } from 'url';
 import { exec, spawn } from 'child_process';
+import selfsigned from 'selfsigned';
+import mdns from 'multicast-dns';
 
 let sleepPreventerProcess = null;
 const chatHistory = [];
@@ -482,11 +485,47 @@ async function getDirectorySize(dir) {
 
 // --- CREATE SERVER AND WEBSOCKET ---
 
+function getOrCreateSSLCertificates() {
+  const certDir = path.join(UPLOADS_DIR, '.cert');
+  const certPath = path.join(certDir, 'cert.pem');
+  const keyPath = path.join(certDir, 'key.pem');
+
+  if (!fs.existsSync(certDir)) {
+    fs.mkdirSync(certDir, { recursive: true });
+  }
+
+  if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+    try {
+      return {
+        cert: fs.readFileSync(certPath, 'utf8'),
+        key: fs.readFileSync(keyPath, 'utf8')
+      };
+    } catch (err) {
+      console.warn('Cached certificates corrupt, regenerating...', err);
+    }
+  }
+
+  console.log('Generating self-signed SSL certificates for HTTPS secure context...');
+  const attrs = [{ name: 'commonName', value: 'localdrop.local' }];
+  const pems = selfsigned.generate(attrs, { days: 365 });
+
+  fs.writeFileSync(certPath, pems.cert, 'utf8');
+  fs.writeFileSync(keyPath, pems.private, 'utf8');
+
+  return {
+    cert: pems.cert,
+    key: pems.private
+  };
+}
+
+const sslOptions = getOrCreateSSLCertificates();
+
 const server = http.createServer(app);
+const httpsServer = https.createServer(sslOptions, app);
 const wss = new WebSocketServer({ noServer: true });
 
 // Handle WebSocket authentication handshake
-server.on('upgrade', (req, socket, head) => {
+const handleUpgrade = (req, socket, head) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const token = url.searchParams.get('token');
 
@@ -501,9 +540,13 @@ server.on('upgrade', (req, socket, head) => {
     ws.clientToken = token;
     wss.emit('connection', ws, req);
   });
-});
+};
+
+server.on('upgrade', handleUpgrade);
+httpsServer.on('upgrade', handleUpgrade);
 
 const clients = new Set();
+let currentClipboardText = '';
 
 wss.on('connection', (ws, req) => {
   // Capture device metadata
@@ -547,6 +590,7 @@ wss.on('connection', (ws, req) => {
   ws.send(JSON.stringify({ type: 'assigned_name', name: ws.clientName }));
   ws.send(JSON.stringify({ type: 'chat_history', data: chatHistory }));
   sendFileList(ws);
+  ws.send(JSON.stringify({ type: 'clipboard_sync', text: currentClipboardText }));
 
   ws.on('message', (message) => {
     try {
@@ -608,6 +652,11 @@ wss.on('connection', (ws, req) => {
             ws.send(JSON.stringify({ type: 'chat', data: chatMsg }));
           }
         }
+      }
+
+      if (parsed.type === 'clipboard_update') {
+        currentClipboardText = parsed.text || '';
+        broadcast({ type: 'clipboard_sync', text: currentClipboardText, sender: ws.clientName });
       }
     } catch (err) {
       console.error('Error handling WebSocket message:', err);
@@ -685,38 +734,84 @@ async function broadcastFileList() {
   }
 }
 
-// Log startup details
-server.listen(PORT, '0.0.0.0', () => {
+// Helper: Get local IPv4 addresses
+function getLocalIpAddresses() {
   const interfaces = os.networkInterfaces();
-  const addresses = [];
-  addresses.push(`http://localhost:${PORT}`);
-  
+  const ips = [];
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        addresses.push(`http://${iface.address}:${PORT}`);
+        ips.push(iface.address);
       }
     }
   }
+  return ips;
+}
 
-  console.clear();
-  console.log('========================================================');
-  console.log('      🚀 LOCAL NETWORK SECURE FILE TRANSFER SERVER 🚀    ');
-  console.log('========================================================\n');
-  console.log(`🔐 ACCESS PIN: ${SERVER_PIN}`);
-  console.log('\n🔗 Connection Links:');
-  addresses.forEach((address) => {
-    console.log(`   - ${address}/?token=${STARTUP_TOKEN} (Auto-login)`);
-    console.log(`   - ${address} (Needs PIN)`);
-  });
-  console.log('\n========================================================');
+// Start multicast DNS responder
+function startMdnsResponder() {
+  try {
+    const m = mdns();
+    m.on('query', (query) => {
+      const question = query.questions.find(q => q.name === 'localdrop.local' && q.type === 'A');
+      if (question) {
+        const ips = getLocalIpAddresses();
+        const answers = ips.map(ip => ({
+          name: 'localdrop.local',
+          type: 'A',
+          ttl: 120,
+          data: ip
+        }));
+        
+        m.respond({ answers });
+      }
+    });
+    console.log('📡 mDNS Auto-Discovery active: Access at http://localdrop.local:3000');
+  } catch (err) {
+    console.error('Failed to start mDNS responder:', err);
+  }
+}
 
-  // Open default browser on startup pointing to local autologin page
-  openBrowser(`http://localhost:${PORT}/?token=${STARTUP_TOKEN}`);
+// Log startup details
+const HTTPS_PORT = PORT + 1;
+let serversStarted = 0;
 
-  // Prevent Windows system sleep while hosting
-  preventSleep();
-});
+function checkAllServersStarted() {
+  serversStarted++;
+  if (serversStarted === 2) {
+    const addresses = getLocalIpAddresses();
+    
+    console.clear();
+    console.log('========================================================');
+    console.log('      🚀 LOCAL NETWORK SECURE FILE TRANSFER SERVER 🚀    ');
+    console.log('========================================================\n');
+    console.log(`🔐 ACCESS PIN: ${SERVER_PIN}`);
+    console.log('\n🔗 Connection Links (HTTP):');
+    console.log(`   - http://localhost:${PORT}/?token=${STARTUP_TOKEN} (Auto-login)`);
+    addresses.forEach(ip => {
+      console.log(`   - http://${ip}:${PORT}/?token=${STARTUP_TOKEN}`);
+    });
+    
+    console.log('\n🔒 Secure Connection Links (HTTPS - Unlocks Clipboard Sync):');
+    console.log(`   - https://localhost:${HTTPS_PORT}/?token=${STARTUP_TOKEN} (Auto-login)`);
+    addresses.forEach(ip => {
+      console.log(`   - https://${ip}:${HTTPS_PORT}/?token=${STARTUP_TOKEN}`);
+    });
+    console.log('\n========================================================');
+
+    // Open default browser on startup pointing to local autologin page
+    openBrowser(`http://localhost:${PORT}/?token=${STARTUP_TOKEN}`);
+
+    // Prevent Windows system sleep while hosting
+    preventSleep();
+
+    // Start mDNS Responder
+    startMdnsResponder();
+  }
+}
+
+server.listen(PORT, '0.0.0.0', checkAllServersStarted);
+httpsServer.listen(HTTPS_PORT, '0.0.0.0', checkAllServersStarted);
 
 // Helper: Open default browser in a cross-platform manner
 function openBrowser(url) {

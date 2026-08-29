@@ -7,11 +7,13 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "build:exe": "npx esbuild server.js --bundle --platform=node --format=cjs --outfile=dist/server.cjs && npx pkg dist/server.cjs -c package.json --targets node18-win-x64 --output localdrop.exe"
+    "build:exe": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe /out:localdrop.exe /target:exe c:\\MyWork\\Antigravity\\local-network-transfer\\scripts\\Launcher.cs"
   },
   "dependencies": {
     "archiver": "^6.0.1",
     "express": "^4.19.2",
+    "multicast-dns": "^7.2.5",
+    "selfsigned": "^5.5.0",
     "ws": "^8.16.0"
   },
   "devDependencies": {

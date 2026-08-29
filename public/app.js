@@ -11,6 +11,9 @@ let clientName = '';
 const activeDownloads = new Map();
 let totalUploadBatchFiles = 0;
 let completedUploadBatchFiles = 0;
+let selectedFiles = new Set();
+let filesDataCached = [];
+let isEditingClipboard = false;
 
 // Concurrency upload queue state
 const uploadQueue = [];
@@ -349,6 +352,23 @@ function setupEventListeners() {
     });
   }
 
+  // Initialize Shared Clipboard
+  initClipboardSync();
+
+  // Initialize Batch Selection actions
+  initBatchActions();
+
+  // Initialize Media Lightbox Modal Close
+  const lightboxCloseBtn = document.getElementById('lightbox-close-btn');
+  if (lightboxCloseBtn) {
+    lightboxCloseBtn.addEventListener('click', () => {
+      const modal = document.getElementById('lightbox-modal');
+      const content = document.getElementById('lightbox-content');
+      if (modal) modal.classList.remove('active');
+      if (content) content.innerHTML = '';
+    });
+  }
+
   // Chat attachment controls
   const chatAttachBtn = document.getElementById('chat-attach-btn');
   const chatFileInput = document.getElementById('chat-file-input');
@@ -653,6 +673,9 @@ function connectWebSocket() {
         case 'file_list':
           renderFileList(msg.data);
           break;
+        case 'clipboard_sync':
+          handleClipboardSync(msg.text, msg.sender);
+          break;
       }
     } catch (e) {
       console.error('Failed to parse WebSocket message:', e);
@@ -882,9 +905,20 @@ function renderDevicesModalContent() {
 
 // Render dynamic shared files list
 function renderFileList(files) {
+  filesDataCached = files || [];
+  
+  const selectAllLabel = document.getElementById('select-all-label');
+  if (files && files.length > 0) {
+    if (selectAllLabel) selectAllLabel.classList.remove('hidden');
+  } else {
+    if (selectAllLabel) selectAllLabel.classList.add('hidden');
+  }
+
   if (!files || files.length === 0) {
     emptyState.classList.remove('hidden');
     filesList.classList.add('hidden');
+    selectedFiles.clear();
+    updateBatchActionBar();
     return;
   }
 
@@ -892,18 +926,43 @@ function renderFileList(files) {
   filesList.classList.remove('hidden');
   filesList.innerHTML = '';
 
+  const validPaths = new Set(files.map(f => f.path));
+  selectedFiles.forEach(path => {
+    if (!validPaths.has(path)) {
+      selectedFiles.delete(path);
+    }
+  });
+  updateBatchActionBar();
+
   files.forEach((file) => {
     const row = document.createElement('div');
-    row.className = 'file-row';
+    const isChecked = selectedFiles.has(file.path) ? 'checked' : '';
+    const selectedClass = selectedFiles.has(file.path) ? 'selected' : '';
+    row.className = `file-row ${selectedClass}`;
 
     const isFolder = file.type === 'directory';
     const iconName = isFolder ? 'folder' : 'file-text';
     const iconClass = isFolder ? 'file-icon directory' : 'file-icon file';
 
+    const ext = file.name.split('.').pop().toLowerCase();
+    const isImg = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext);
+    const isVid = ['mp4', 'webm', 'ogg'].includes(ext);
+    const isAud = ['mp3', 'wav', 'ogg', 'm4a'].includes(ext);
+    const hasPreview = isImg || isVid || isAud;
+
+    let customIconHtml = `<i data-lucide="${iconName}"></i>`;
+    if (isImg) {
+      const thumbUrl = `/api/download?path=${encodeURIComponent(file.path)}&token=${token}`;
+      customIconHtml = `<img src="${thumbUrl}" class="row-thumb" alt="${escapeHtml(file.name)}">`;
+    }
+
     row.innerHTML = `
+      <div class="file-row-select">
+        <input type="checkbox" class="row-checkbox" data-path="${escapeHtml(file.path)}" ${isChecked}>
+      </div>
       <div class="file-info">
         <div class="${iconClass}">
-          <i data-lucide="${iconName}"></i>
+          ${customIconHtml}
         </div>
         <div class="file-text-details">
           <span class="file-name" title="${file.name}">${file.name}</span>
@@ -915,6 +974,11 @@ function renderFileList(files) {
         </div>
       </div>
       <div class="file-actions">
+        ${hasPreview ? `
+          <button class="action-btn btn-preview" title="Preview Media">
+            <i data-lucide="eye"></i>
+          </button>
+        ` : ''}
         <button class="action-btn btn-download" title="Download ${isFolder ? 'Folder as ZIP' : 'File'}">
           <i data-lucide="download"></i>
         </button>
@@ -924,13 +988,48 @@ function renderFileList(files) {
       </div>
     `;
 
+    // Checkbox toggle listener
+    const cb = row.querySelector('.row-checkbox');
+    cb.addEventListener('change', (e) => {
+      e.stopPropagation();
+      if (cb.checked) {
+        selectedFiles.add(file.path);
+        row.classList.add('selected');
+      } else {
+        selectedFiles.delete(file.path);
+        row.classList.remove('selected');
+        const selectAllCheckbox = document.getElementById('select-all-checkbox');
+        if (selectAllCheckbox) selectAllCheckbox.checked = false;
+      }
+      updateBatchActionBar();
+    });
+
+    // Row click selection
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.file-actions') || e.target.closest('.row-checkbox') || e.target.closest('.file-row-select')) {
+        return;
+      }
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change'));
+    });
+
+    // Preview binding
+    if (hasPreview) {
+      row.querySelector('.btn-preview').addEventListener('click', (e) => {
+        e.stopPropagation();
+        showMediaLightbox(file);
+      });
+    }
+
     // Download binding
-    row.querySelector('.btn-download').addEventListener('click', () => {
+    row.querySelector('.btn-download').addEventListener('click', (e) => {
+      e.stopPropagation();
       downloadFileWithProgress(file);
     });
 
     // Delete binding
-    row.querySelector('.btn-delete').addEventListener('click', async () => {
+    row.querySelector('.btn-delete').addEventListener('click', async (e) => {
+      e.stopPropagation();
       if (confirm(`Are you sure you want to delete "${file.name}"?`)) {
         try {
           const response = await fetch(`/api/delete?path=${encodeURIComponent(file.path)}&token=${token}`, {
@@ -1759,4 +1858,187 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+// --- SHARED CLIPBOARD SYNC LOGIC ---
+function handleClipboardSync(text, sender) {
+  const textarea = document.getElementById('clipboard-text');
+  if (textarea && !isEditingClipboard) {
+    textarea.value = text;
+    if (sender && sender !== clientName) {
+      showToast(`Clipboard synced from ${formatClientName(sender)}`, 'info');
+    }
+  }
+}
+
+function initClipboardSync() {
+  const textarea = document.getElementById('clipboard-text');
+  const copyBtn = document.getElementById('clipboard-copy-btn');
+  const editBtn = document.getElementById('clipboard-edit-btn');
+
+  if (!textarea || !copyBtn || !editBtn) return;
+
+  copyBtn.addEventListener('click', () => {
+    if (!textarea.value) {
+      showToast('Nothing to copy!', 'info');
+      return;
+    }
+    navigator.clipboard.writeText(textarea.value)
+      .then(() => showToast('Copied to device clipboard!', 'success'))
+      .catch(() => showToast('Failed to copy. Requires HTTPS context.', 'error'));
+  });
+
+  editBtn.addEventListener('click', () => {
+    if (!isEditingClipboard) {
+      isEditingClipboard = true;
+      textarea.removeAttribute('readonly');
+      textarea.focus();
+      editBtn.querySelector('span').innerText = 'Save & Sync';
+      editBtn.querySelector('i').setAttribute('data-lucide', 'save');
+      editBtn.className = 'btn btn-success';
+    } else {
+      isEditingClipboard = false;
+      textarea.setAttribute('readonly', 'true');
+      editBtn.querySelector('span').innerText = 'Edit & Sync';
+      editBtn.querySelector('i').setAttribute('data-lucide', 'edit-3');
+      editBtn.className = 'btn btn-primary';
+
+      // Push to WS
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'clipboard_update',
+          text: textarea.value
+        }));
+      }
+    }
+    lucide.createIcons();
+  });
+}
+
+// --- BATCH SELECTIONS LOGIC ---
+function updateBatchActionBar() {
+  const bar = document.getElementById('batch-action-bar');
+  const countSpan = document.getElementById('batch-count');
+  if (!bar || !countSpan) return;
+
+  if (selectedFiles.size > 0) {
+    countSpan.innerText = `${selectedFiles.size} item${selectedFiles.size > 1 ? 's' : ''} selected`;
+    bar.classList.remove('hidden');
+  } else {
+    bar.classList.add('hidden');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+  }
+}
+
+function initBatchActions() {
+  const selectAllCheckbox = document.getElementById('select-all-checkbox');
+  const batchDownloadBtn = document.getElementById('batch-download-btn');
+  const batchDeleteBtn = document.getElementById('batch-delete-btn');
+  const batchClearBtn = document.getElementById('batch-clear-btn');
+
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', () => {
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+      if (selectAllCheckbox.checked) {
+        selectedFiles.clear();
+        checkboxes.forEach(cb => {
+          cb.checked = true;
+          const path = cb.getAttribute('data-path');
+          selectedFiles.add(path);
+          cb.closest('.file-row')?.classList.add('selected');
+        });
+      } else {
+        selectedFiles.clear();
+        checkboxes.forEach(cb => {
+          cb.checked = false;
+          cb.closest('.file-row')?.classList.remove('selected');
+        });
+      }
+      updateBatchActionBar();
+    });
+  }
+
+  if (batchClearBtn) {
+    batchClearBtn.addEventListener('click', deselectAllFiles);
+  }
+
+  if (batchDownloadBtn) {
+    batchDownloadBtn.addEventListener('click', async () => {
+      const paths = Array.from(selectedFiles);
+      if (paths.length === 0) return;
+
+      showToast(`Downloading ${paths.length} items...`, 'info');
+      deselectAllFiles();
+
+      const targets = filesDataCached.filter(f => paths.includes(f.path));
+      for (const file of targets) {
+        try {
+          await downloadFileWithProgress(file);
+        } catch (err) {
+          console.error('Batch download error:', err);
+        }
+      }
+    });
+  }
+
+  if (batchDeleteBtn) {
+    batchDeleteBtn.addEventListener('click', async () => {
+      const paths = Array.from(selectedFiles);
+      if (paths.length === 0) return;
+
+      if (confirm(`Are you sure you want to delete these ${paths.length} selected items?`)) {
+        showToast('Deleting items...', 'info');
+        deselectAllFiles();
+
+        let successCount = 0;
+        for (const path of paths) {
+          try {
+            const response = await fetch(`/api/delete?path=${encodeURIComponent(path)}&token=${token}`, {
+              method: 'DELETE'
+            });
+            if (response.ok) successCount++;
+          } catch (err) {
+            console.error('Batch item deletion failed:', err);
+          }
+        }
+        showToast(`Successfully deleted ${successCount} of ${paths.length} items.`, 'success');
+      }
+    });
+  }
+}
+
+function deselectAllFiles() {
+  selectedFiles.clear();
+  document.querySelectorAll('.row-checkbox').forEach(cb => {
+    cb.checked = false;
+    cb.closest('.file-row')?.classList.remove('selected');
+  });
+  updateBatchActionBar();
+}
+
+// --- MEDIA LIGHTBOX PREVIEWER ---
+function showMediaLightbox(file) {
+  const modal = document.getElementById('lightbox-modal');
+  const content = document.getElementById('lightbox-content');
+  const caption = document.getElementById('lightbox-caption');
+
+  if (!modal || !content || !caption) return;
+
+  const ext = file.name.split('.').pop().toLowerCase();
+  const fileUrl = `/api/download?path=${encodeURIComponent(file.path)}&token=${token}`;
+  
+  content.innerHTML = '';
+  caption.innerText = `${file.name} (${formatBytes(file.size)})`;
+
+  if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
+    content.innerHTML = `<img src="${fileUrl}" alt="${escapeHtml(file.name)}">`;
+  } else if (['mp4', 'webm', 'ogg'].includes(ext)) {
+    content.innerHTML = `<video src="${fileUrl}" controls autoplay></video>`;
+  } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
+    content.innerHTML = `<audio src="${fileUrl}" controls autoplay style="width:100%; max-width:500px;"></audio>`;
+  }
+
+  modal.classList.add('active');
+  lucide.createIcons();
 }
