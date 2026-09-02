@@ -1883,10 +1883,32 @@ function initClipboardSync() {
       showToast('Nothing to copy!', 'info');
       return;
     }
-    navigator.clipboard.writeText(textarea.value)
-      .then(() => showToast('Copied to device clipboard!', 'success'))
-      .catch(() => showToast('Failed to copy. Requires HTTPS context.', 'error'));
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(textarea.value)
+        .then(() => showToast('Copied to device clipboard!', 'success'))
+        .catch(() => copyFallback(textarea));
+    } else {
+      copyFallback(textarea);
+    }
   });
+
+  function copyFallback(el) {
+    const wasReadOnly = el.hasAttribute('readonly');
+    el.removeAttribute('readonly');
+    el.select();
+    el.setSelectionRange(0, 99999); // For mobile devices
+    try {
+      const ok = document.execCommand('copy');
+      if (ok) {
+        showToast('Copied to device clipboard!', 'success');
+      } else {
+        showToast('Please select text and copy manually', 'info');
+      }
+    } catch (err) {
+      showToast('Please select text and copy manually', 'info');
+    }
+    if (wasReadOnly) el.setAttribute('readonly', 'true');
+  }
 
   editBtn.addEventListener('click', () => {
     if (!isEditingClipboard) {
