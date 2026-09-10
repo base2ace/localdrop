@@ -93,9 +93,35 @@ app.use(express.json());
 const staticDir = process.pkg ? path.join(__dirname, '..', 'public') : path.join(__dirname, 'public');
 app.use(express.static(staticDir));
 
+// Helper: Get local IPv4 addresses
+function getLocalIpAddresses() {
+  const interfaces = os.networkInterfaces();
+  const ips = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        ips.push(iface.address);
+      }
+    }
+  }
+  return ips;
+}
+
+// Helper: Check if request originates from the server host machine
+function isLocalRequest(req) {
+  const remoteIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').replace('::ffff:', '');
+  if (remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === 'localhost') return true;
+  const localIps = getLocalIpAddresses();
+  return localIps.includes(remoteIp);
+}
+
 // Authentication Helper Middleware
 const authenticate = (req, res, next) => {
-  const token = req.headers['authorization']?.split(' ')[1] || req.query.token;
+  let token = req.headers['authorization']?.split(' ')[1] || req.query.token;
+  if (!token && isLocalRequest(req)) {
+    token = STARTUP_TOKEN;
+    req.query.token = STARTUP_TOKEN;
+  }
   if (!token || (!VALID_TOKENS.has(token) && !rememberedClients.has(token))) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -104,31 +130,55 @@ const authenticate = (req, res, next) => {
 
 // --- REST API ENDPOINTS ---
 
-// Check if authentication token is valid
+// Check if authentication token is valid (or auto-authorize if local host)
 app.get('/api/auth/verify', (req, res) => {
   const token = req.query.token;
   if (token && (VALID_TOKENS.has(token) || rememberedClients.has(token))) {
-    return res.json({ valid: true });
+    return res.json({ valid: true, isServer: token === STARTUP_TOKEN, token });
+  }
+  // Auto-authorize local requests from the host server machine
+  if (isLocalRequest(req)) {
+    return res.json({ valid: true, isServer: true, token: STARTUP_TOKEN });
   }
   res.json({ valid: false });
 });
 
-// Authenticate via PIN
+// Auto-login endpoint for the server host machine without PIN
+app.get('/api/auth/local', (req, res) => {
+  if (isLocalRequest(req)) {
+    return res.json({
+      success: true,
+      token: STARTUP_TOKEN,
+      name: 'LocalDrop Server',
+      isServer: true
+    });
+  }
+  res.status(403).json({ error: 'Auto-login is only available on the server host machine' });
+});
+
+// Authenticate via PIN (or without PIN if connecting locally from server machine)
 app.post('/api/auth', (req, res) => {
   const { pin, remember, userAgent } = req.body;
-  if (pin === SERVER_PIN) {
-    const token = crypto.randomBytes(16).toString('hex');
-    VALID_TOKENS.add(token);
+  const isHostLocal = isLocalRequest(req);
+
+  if (pin === SERVER_PIN || (isHostLocal && (!pin || pin === 'server'))) {
+    const isHost = isHostLocal && (!pin || pin === 'server');
+    const token = isHost ? STARTUP_TOKEN : crypto.randomBytes(16).toString('hex');
+    if (!isHost) {
+      VALID_TOKENS.add(token);
+    }
     
-    let name = generateClientName();
-    const existingNames = new Set(Array.from(rememberedClients.values()).map(c => c.name));
-    let attempts = 0;
-    while (existingNames.has(name) && attempts < 100) {
-      name = generateClientName();
-      attempts++;
+    let name = isHost ? 'LocalDrop Server' : generateClientName();
+    if (!isHost) {
+      const existingNames = new Set(Array.from(rememberedClients.values()).map(c => c.name));
+      let attempts = 0;
+      while (existingNames.has(name) && attempts < 100) {
+        name = generateClientName();
+        attempts++;
+      }
     }
 
-    if (remember) {
+    if (remember && !isHost) {
       rememberedClients.set(token, {
         name,
         deviceInfo: {
@@ -138,11 +188,11 @@ app.post('/api/auth', (req, res) => {
         }
       });
       saveRememberedClients();
-    } else {
+    } else if (!isHost) {
       tempClientNames.set(token, name);
     }
     
-    return res.json({ token, name });
+    return res.json({ token, name, isServer: isHost });
   }
   res.status(401).json({ error: 'Invalid PIN' });
 });
@@ -374,7 +424,7 @@ app.get('/api/server-info', authenticate, async (req, res) => {
   }
 
   const token = req.headers['authorization']?.split(' ')[1] || req.query.token;
-  const isServer = token === STARTUP_TOKEN;
+  const isServer = (token === STARTUP_TOKEN) || isLocalRequest(req);
 
   res.json({ 
     hostname, 
@@ -488,7 +538,13 @@ const wss = new WebSocketServer({ noServer: true });
 // Handle WebSocket authentication handshake
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const token = url.searchParams.get('token');
+  let token = url.searchParams.get('token');
+  const remoteIp = (socket.remoteAddress || '').replace('::ffff:', '');
+  const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === 'localhost' || getLocalIpAddresses().includes(remoteIp);
+
+  if (isLocal && (!token || (!VALID_TOKENS.has(token) && !rememberedClients.has(token)))) {
+    token = STARTUP_TOKEN;
+  }
 
   if (!token || (!VALID_TOKENS.has(token) && !rememberedClients.has(token))) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
@@ -690,20 +746,6 @@ async function broadcastFileList() {
   } catch (err) {
     console.error('Broadcast file list failed:', err);
   }
-}
-
-// Helper: Get local IPv4 addresses
-function getLocalIpAddresses() {
-  const interfaces = os.networkInterfaces();
-  const ips = [];
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        ips.push(iface.address);
-      }
-    }
-  }
-  return ips;
 }
 
 // Log startup details

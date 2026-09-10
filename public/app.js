@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (token) {
     verifyToken();
   } else {
-    showScreen('auth-screen');
+    checkAutoLogin();
   }
 
   setupEventListeners();
@@ -72,23 +72,67 @@ document.addEventListener('DOMContentLoaded', () => {
   lucide.createIcons();
 });
 
+// Auto-login check for local server host machine without PIN
+async function checkAutoLogin() {
+  const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  if (isLocalHost) {
+    try {
+      const response = await fetch('/api/auth/local');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.token) {
+          token = data.token;
+          clientName = data.name || 'LocalDrop Server';
+          isServer = true;
+          sessionStorage.setItem('localdrop_token', token);
+          showScreen('app-screen');
+          initializeDashboard();
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Local auto-login check failed:', e);
+    }
+  }
+  showScreen('auth-screen');
+  checkLocalHostUI();
+}
+
+function checkLocalHostUI() {
+  const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const localContainer = document.getElementById('local-host-login-container');
+  if (localContainer) {
+    if (isLocalHost) {
+      localContainer.classList.remove('hidden');
+    } else {
+      localContainer.classList.add('hidden');
+    }
+  }
+  if (isLocalHost && pinInput) {
+    pinInput.placeholder = 'PIN not required for Host';
+  }
+  lucide.createIcons();
+}
+
 // Verify if the session token is valid
 async function verifyToken() {
   try {
     const response = await fetch(`/api/auth/verify?token=${token}`);
     const result = await response.json();
     if (result.valid) {
+      if (result.token) {
+        token = result.token;
+        sessionStorage.setItem('localdrop_token', token);
+      }
+      if (result.isServer) isServer = true;
       showScreen('app-screen');
       initializeDashboard();
     } else {
-      clearSession();
+      checkAutoLogin();
     }
   } catch (error) {
     console.error('Failed to verify token:', error);
-    showToast('Failed to reach server. Trying local connection.', 'error');
-    // If server is unreachable but we have token, we can try to initialize anyway
-    showScreen('app-screen');
-    initializeDashboard();
+    checkAutoLogin();
   }
 }
 
@@ -98,6 +142,7 @@ function clearSession() {
   sessionStorage.removeItem('localdrop_token');
   localStorage.removeItem('localdrop_token');
   showScreen('auth-screen');
+  checkLocalHostUI();
   if (ws) {
     ws.close();
     ws = null;
@@ -124,8 +169,9 @@ function setupEventListeners() {
     e.preventDefault();
     const pin = pinInput.value.trim();
     const remember = document.getElementById('remember-me-checkbox')?.checked || false;
+    const isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     
-    if (pin.length !== 6) {
+    if (!isLocalHost && pin.length !== 6) {
       showAuthError('PIN must be 6 digits.');
       return;
     }
@@ -144,6 +190,7 @@ function setupEventListeners() {
         const data = await response.json();
         token = data.token;
         clientName = data.name;
+        if (data.isServer) isServer = true;
         sessionStorage.setItem('localdrop_token', token);
         if (remember) {
           localStorage.setItem('localdrop_token', token);
@@ -162,6 +209,32 @@ function setupEventListeners() {
       authBtn.querySelector('span').innerText = 'Connect Session';
     }
   });
+
+  // Local server button click (no PIN)
+  const localServerBtn = document.getElementById('local-server-btn');
+  if (localServerBtn) {
+    localServerBtn.addEventListener('click', async () => {
+      authBtn.disabled = true;
+      try {
+        const response = await fetch('/api/auth/local');
+        if (response.ok) {
+          const data = await response.json();
+          token = data.token;
+          clientName = data.name || 'LocalDrop Server';
+          isServer = true;
+          sessionStorage.setItem('localdrop_token', token);
+          showScreen('app-screen');
+          initializeDashboard();
+        } else {
+          showAuthError('Could not auto-login as server.');
+        }
+      } catch (err) {
+        showAuthError('Failed to connect to local server.');
+      } finally {
+        authBtn.disabled = false;
+      }
+    });
+  }
 
   // Logout click
   logoutBtn.addEventListener('click', clearSession);
